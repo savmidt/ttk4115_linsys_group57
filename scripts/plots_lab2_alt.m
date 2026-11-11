@@ -32,7 +32,8 @@ legendNames = containers.Map();
 
 % Sammenligningsfigur
 makeCompare   = true;
-compareTests  = {};             % tom = én figur per gruppe (prob1 og prob2) med alle testene
+% tom = én figur per gruppe (prob1 og prob2) med alle testene
+compareTests  = {'part2prob1_q_10_20_20_r_01', 'part2prob1_q_1_r_1', 'part2prob1_q_5_05_10_r_01'}; 
                                 % ikke tom = én figur med akkurat disse testene, også på
                                 % tvers av prob1/prob2. Lagres da i figurer/lab2. F.eks.
                                 % {'part2prob1_q_10_r_01', 'part2prob2_q_10_r_01'}
@@ -40,7 +41,7 @@ compareStates = [1 2];          % 1 p, 2 edot, 3 V_s, 4 V_d
 compareMode   = 'signal';       % 'signal' : selve signalene + referanse (krever lik
                                 %            referanse i alle testene, ellers -> 'error')
                                 % 'error'  : følgefeil p - p_ref og edot - edot_ref
-compareName   = 'compare_tracking'; % filnavn; endre for å lagre flere varianter
+compareName   = 'compare_tracking_base_brysons_best'; % filnavn; endre for å lagre flere varianter
 
 %% Oppsett
 setDefaults(fontSz);
