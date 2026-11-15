@@ -25,6 +25,8 @@ helpsearch*/
 slprj/
 sccprj/
 codegen/
+heli_q8_lab*/
+slprj/
 
 # Cache files
 *.slxc

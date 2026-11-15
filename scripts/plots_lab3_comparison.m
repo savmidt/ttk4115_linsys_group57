@@ -14,10 +14,20 @@ dataDir  = 'logs';
 figDir   = fullfile('figurer', 'lab3');
 saveFigs = true;
 
+% Hvilke tester som skal brukes i hele skriptet (figurer, sammenligning, tabell).
+% Filnavn uten .mat. Tom = alle lab3part2_*.mat i dataDir.
+tests = {'lab3part2_baseline', 'lab3part2_test6', 'lab3part2_test8'};
+
 % Figurstørrelse i cm. Sett figW lik \textwidth i rapporten (\the\textwidth)
 % og inkluder med \includegraphics{...} uten skalering.
-figW   = 13;
+figW   = 16;
 fontSz = 9;
+
+% Filformat for figurene: 'eps' (vektor, krever epstopdf med pdfLaTeX) eller 'pdf'
+figFormat = 'eps';
+
+% Navn på estimatet i legenden
+estName = 'Luenberger';
 
 % Valgfritt: beskrivende navn i tabellen (f.eks. polplassering eller C-matrise).
 % Nøkkel = filnavn uten .mat.
@@ -26,7 +36,7 @@ legendNames = containers.Map();
 
 % Sammenligningsfigur: estimeringsfeil (encoder - estimat) for flere tester
 makeCompare   = true;
-compareTests  = {};             % filnavn uten .mat, tom = alle. Velg helst 3-4, f.eks.
+compareTests  = {'lab3part2_baseline', 'lab3part2_test6', 'lab3part2_test8'}; % filnavn uten .mat, tom = alle. Velg helst 3-4, f.eks.
                                 % {'lab3part2_baseline', 'lab3part2_test3', 'lab3part2_test5'}
 compareStates = [1 2 3 4 5];    % 1 p, 2 pdot, 3 e, 4 edot, 5 lambdadot
 compareName   = 'compare_error';% filnavn; endre for å lagre flere varianter
@@ -37,6 +47,14 @@ r2d = 180/pi;
 
 files = dir(fullfile(dataDir, 'lab3part2_*.mat'));
 if isempty(files), error('Fant ingen filer i %s som matcher lab3part2_*.mat', dataDir); end
+if ~isempty(tests)
+    [~, fNames] = cellfun(@fileparts, {files.name}, 'UniformOutput', false);
+    missing = setdiff(tests, fNames);
+    if ~isempty(missing)
+        error('Fant ikke disse testene i %s: %s', dataDir, strjoin(missing, ', '));
+    end
+    files = files(ismember(fNames, tests));
+end
 if saveFigs && ~exist(figDir, 'dir'), mkdir(figDir); end
 
 % Tilstander: navn, enhet, kolonne for encoder, kolonne for estimat
@@ -57,38 +75,30 @@ for k = 1:numel(files)
     D(k).t    = d(:,1);
     D(k).meas = d(:,measC) * r2d;
     D(k).est  = d(:,estC)  * r2d;
+    D(k).ref  = nan(size(D(k).meas));      % referanse per tilstand, NaN = ingen
+    D(k).ref(:,1) = d(:,13) * r2d;         % x_ref -> pitch
+    D(k).ref(:,4) = d(:,14) * r2d;         % y_ref -> elevasjonsrate
     D(k).rms  = sqrt(mean((D(k).meas - D(k).est).^2, 1));
 end
 
-%% Figurer per test: vinkler og rater i hver sin figur
+%% Figur per test: pitch og elevasjonsrate med encoder, estimat og referanse
 for k = 1:numel(D)
-    % Vinkler: p og e
-    fig = newFig(figW, 8);
+    fig = newFig(figW, 9);
     tl = tiledlayout(2, 1, 'TileSpacing', 'compact', 'Padding', 'compact');
-    for i = [1 3]
+    for i = [1 4]                          % 1 = p, 4 = edot
         nexttile; hold on;
-        plot(D(k).t, D(k).meas(:,i));
-        plot(D(k).t, D(k).est(:,i), '--');
+        h = plotNoisyFirst(D(k).t, D(k).meas(:,i), D(k).est(:,i), D(k).ref(:,i));
         ylabel(['$' names{i} '$ [' units{i} ']']);
-        if i == 1, legend('Encoder', 'Estimate', 'Location', 'best'); end
+        if i == 1
+            lgd = legend(h, 'Encoder', estName, 'Reference', ...
+                         'Orientation', 'horizontal', 'Box', 'off');
+            lgd.Layout.Tile = 'north';
+        end
     end
     xlabel(tl, 'Time [s]', 'Interpreter', 'latex', 'FontSize', fontSz);
     linkaxes(findall(fig, 'Type', 'axes'), 'x');
-    saveFig(fig, figDir, [D(k).name '_angles'], saveFigs);
-
-    % Rater: pdot, edot, lambdadot
-    fig = newFig(figW, 11);
-    tl = tiledlayout(3, 1, 'TileSpacing', 'compact', 'Padding', 'compact');
-    for i = [2 4 5]
-        nexttile; hold on;
-        plot(D(k).t, D(k).meas(:,i));
-        plot(D(k).t, D(k).est(:,i), '--');
-        ylabel(['$' names{i} '$ [' units{i} ']']);
-        if i == 2, legend('Encoder', 'Estimate', 'Location', 'best'); end
-    end
-    xlabel(tl, 'Time [s]', 'Interpreter', 'latex', 'FontSize', fontSz);
-    linkaxes(findall(fig, 'Type', 'axes'), 'x');
-    saveFig(fig, figDir, [D(k).name '_rates'], saveFigs);
+    xlim([D(k).t(1) D(k).t(end)]);
+    saveFig(fig, figDir, D(k).name, saveFigs, figFormat);
 end
 
 %% Sammenligningsfigur: estimeringsfeil for valgte tester
@@ -110,20 +120,24 @@ if makeCompare
     for s = 1:nS
         i = compareStates(s);
         nexttile; hold on;
-        for j = 1:numel(idx)
+        % Støyeste test tegnes først (bakerst); farge/linjetype følger testen
+        nz = arrayfun(@(k) noiseLevel(D(k).meas(:,i) - D(k).est(:,i)), idx);
+        [~, order] = sort(nz, 'descend');
+        h = gobjects(1, numel(idx));
+        for j = order
             k = idx(j);
-            plot(D(k).t, D(k).meas(:,i) - D(k).est(:,i), styles{mod(j-1,4)+1}, ...
+            h(j) = plot(D(k).t, D(k).meas(:,i) - D(k).est(:,i), styles{mod(j-1,4)+1}, ...
                 'Color', cols(j,:), 'DisplayName', D(k).label);
         end
         ylabel(['$' names{i} ' - \hat{' names{i} '}$ [' units{i} ']']);
         if s == 1
-            lgd = legend('NumColumns', 2);
+            lgd = legend(h, 'NumColumns', 2);   % legend i fast testrekkefølge
             lgd.Layout.Tile = 'south';
         end
     end
     xlabel(tl, 'Time [s]', 'Interpreter', 'latex', 'FontSize', fontSz);
     linkaxes(findall(fig, 'Type', 'axes'), 'x');
-    saveFig(fig, figDir, compareName, saveFigs);
+    saveFig(fig, figDir, compareName, saveFigs, figFormat);
 end
 
 %% RMS av estimeringsfeil (encoder - estimat) som LaTeX-tabell
@@ -137,6 +151,34 @@ if saveFigs
 end
 
 %% Hjelpefunksjoner
+function h = plotNoisyFirst(t, meas, est, ref)
+    % Tegner encoder og estimat med det støyeste signalet først (bakerst),
+    % så det rolige signalet blir synlig oppå. Referansen (svart stiplet)
+    % tegnes til slutt, øverst. Farge følger alltid signalet:
+    % encoder = blå, estimat = oransje (tykkere).
+    % h = [encoder, estimat, referanse] for en legend i fast rekkefølge.
+    c = lines(2);
+    h = gobjects(1, 3);
+    if noiseLevel(est) > noiseLevel(meas)
+        h(2) = plot(t, est,  '-', 'Color', c(2,:), 'LineWidth', 1.5);
+        h(1) = plot(t, meas, '-', 'Color', c(1,:), 'LineWidth', 1.0);
+    else
+        h(1) = plot(t, meas, '-', 'Color', c(1,:), 'LineWidth', 1.0);
+        h(2) = plot(t, est,  '-', 'Color', c(2,:), 'LineWidth', 1.5);
+    end
+    if nargin > 3 && ~all(isnan(ref))
+        h(3) = plot(t, ref, '--', 'Color', 'k', 'LineWidth', 1.5);
+    else
+        h(3) = plot(nan, nan, '--', 'Color', 'k', 'LineWidth', 1.5);   % tom, for legenden
+    end
+end
+
+function n = noiseLevel(y)
+    % Mål på høyfrekvent støy: standardavvik av sample-til-sample-endringen.
+    % Upåvirket av langsomme bevegelser, stort for et støyete signal.
+    n = std(diff(y(~isnan(y))));
+end
+
 function d = loadLog(path, nSig)
     S = load(path);
     fn = fieldnames(S);
@@ -163,9 +205,10 @@ function fig = newFig(w, h)
     fig = figure('Units', 'centimeters', 'Position', [2 2 w h]);
 end
 
-function saveFig(fig, figDir, name, doSave)
+function saveFig(fig, figDir, name, doSave, fmt)
+    if nargin < 5, fmt = 'pdf'; end
     if doSave
-        exportgraphics(fig, fullfile(figDir, [name '.pdf']), 'ContentType', 'vector');
+        exportgraphics(fig, fullfile(figDir, [name '.' fmt]), 'ContentType', 'vector');
     end
 end
 

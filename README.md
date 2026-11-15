@@ -18,7 +18,7 @@ Represents the work of the contributors in the course Linear System Theory at NT
 
 ### Test plan:
 
-IMU characteristics, all measurements, including ENC, forces from IMU, calculations of states(Luenberger): p, p_dot, e, e_dot, t, t_dot, perhaps combine with test below.
+IMU characteristics, all measurements, including ENC, forces from IMU, calculations of states(Luenberger): p, p_dot, e, e_dot, t, t_dot, perhaps combine with test below. Was done in this order of signals: ENC_x_hat, euler_rates, accel_raw, gyro_raw. ENC_x_hat: EST_p, EST_pdot, EST_e, EST_edot, EST_lambdadot. Euler-rates is IMU and gyro calculations of same states. Accel_raw and gyro_raw are both vectors in three dimensions: a_x, a_y, a_z etc.
 
 Transformations: difference using euler_angles and encoder values(Luenberger)
 
